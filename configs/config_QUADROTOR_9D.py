@@ -30,7 +30,7 @@ X_INIT_MAX = np.array([ 5,  5,  5,  1.,  1.,  1., g, 0, 0])
 XE_INIT_MIN = np.array([-0.5,]*9)
 XE_INIT_MAX = np.array([ 0.5,]*9)
 
-time_bound = 6.
+time_bound = 6
 time_step = 0.03
 t = np.arange(0, time_bound, time_step)
 

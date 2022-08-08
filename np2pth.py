@@ -16,8 +16,10 @@ def get_controller_wrapper(controller_path):
 def get_system_wrapper(system):
     num_dim_x = system.num_dim_x
     num_dim_control = system.num_dim_control
+    num_dim_distb = system.num_dim_distb
     f_func = system.f_func
     B_func = system.B_func
+    Bw_func = system.B_func #added
 
     def f(x):
         dot_x = f_func(torch.from_numpy(x).float().view(1,-1,1)).detach().numpy()
@@ -27,7 +29,11 @@ def get_system_wrapper(system):
         B_value = B_func(torch.from_numpy(x).float().view(1,-1,1)).squeeze(0).detach().numpy()
         return B_value
 
-    def full_dynamics(x, u):
-        return (f(x) + B(x).dot(u.reshape(-1,1))).squeeze(-1)
+    def Bw(x): #added
+        Bw_value = Bw_func(torch.from_numpy(x).float().view(1,-1,1)).squeeze(0).detach().numpy()
+        return Bw_value
 
-    return f, B, full_dynamics, num_dim_x, num_dim_control
+    def full_dynamics(x, u):
+        return (f(x) + B(x).dot(u.reshape(-1,1))+ Bw(x).dot(np.random.rand(num_dim_distb,1))).squeeze(-1)
+
+    return f, B, Bw, full_dynamics, num_dim_x, num_dim_control

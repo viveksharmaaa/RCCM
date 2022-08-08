@@ -69,10 +69,10 @@ def g_func(x):
 def DgDxu():
     # All states and inputs
     C = torch.cat((torch.eye(num_dim_x,num_dim_x),torch.zeros(num_dim_control,num_dim_x)))
-    D = torch.cat((torch.zeros(num_dim_x,num_dim_control),torch.ones(num_dim_control,num_dim_control)))
+    D = torch.cat((torch.zeros(num_dim_x,num_dim_control),torch.eye(num_dim_control)))
 
     # Only position states and inputs
-    #C = torch.cat((torch.cat((torch.ones(num_dim_control,num_dim_control),torch.zeros(2,4)),1),torch.zeros(num_dim_control,num_dim_x)))
-    #D = torch.cat((torch.zeros(2, num_dim_control), torch.ones(num_dim_control, num_dim_control)))
+    # C = torch.cat((torch.cat((torch.eye(2),torch.zeros(2,4)),1),torch.zeros(num_dim_control,num_dim_x)))
+    # D = torch.cat((torch.zeros(2, num_dim_control), torch.eye(num_dim_control)))
 
     return C,D

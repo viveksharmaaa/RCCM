@@ -62,12 +62,12 @@ def Bw_func(x):  #For Tube Certified Trajectory Tracking
 
 def DgDxu():
     # All states and inputs
-    C = torch.cat((torch.eye(num_dim_x),torch.zeros(num_dim_control,num_dim_x)))
-    D = torch.cat((torch.zeros(num_dim_x,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
+    #C = torch.cat((torch.eye(num_dim_x),torch.zeros(num_dim_control,num_dim_x)))
+    #D = torch.cat((torch.zeros(num_dim_x,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
 
     # Only position states and inputs
-    #C = torch.cat((torch.cat((torch.ones(num_dim_control,num_dim_control),torch.zeros(2,4)),1),torch.zeros(num_dim_control,num_dim_x)))
-    #D = torch.cat((torch.zeros(2, num_dim_control), torch.ones(num_dim_control, num_dim_control)))
+    C = torch.cat((torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1),torch.zeros(num_dim_control,num_dim_x)))
+    D = torch.cat((torch.zeros(3,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
 
     return C,D
 

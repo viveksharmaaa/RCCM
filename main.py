@@ -35,6 +35,9 @@ Alpha = []
 Mu = []
 Cont = []
 Condition1 = []
+Condition2 = []
+alpha_grad =[]
+mu_grad = []
 #added
 
 np.random.seed(1024)
@@ -176,7 +179,7 @@ def weighted_gradients(W, v, x, detach=False):
     else:
         return (Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
 
-N = 1024
+N = 2 * 1024
 def loss_pos_matrix_random_sampling(A):
     # A: bs x d x d   #added d = n + p
     # z: K x d
@@ -204,17 +207,13 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
     M = torch.inverse(W)
     f = f_func(x)
     B = B_func(x)
-    #gx = g_func(x) #added
     Bw = Bw_func(x) #added
     DfDx = Jacobian(f, x)
-    #DgDx = Jacobian(gx,x) #added
-    #DBwDx = Jacobian(Bw,x) #added
-    #C, D = DgDxu()
     DBDx = torch.zeros(bs, num_dim_x, num_dim_x, num_dim_control).type(x.type())
     for i in range(num_dim_control):
         DBDx[:,:,:,i] = Jacobian(B[:,:,i].unsqueeze(-1), x)
 
-    DBwDx = torch.zeros(bs, num_dim_x, num_dim_x, num_dim_distb).type(x.type())
+    DBwDx = torch.zeros(bs, num_dim_x, num_dim_x, num_dim_distb).type(x.type()) #added
     for i in range(num_dim_distb):
         DBwDx[:,:,:,i] = Jacobian(Bw[:,:,i].unsqueeze(-1), x)
 
@@ -226,86 +225,79 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
     A = DfDx + sum([u[:, i, 0].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i] for i in range(num_dim_control)]) + sum([torch.rand(1) * DBwDx[:, :, :, i] for i in range(num_dim_distb)]) # DBwDx * torch.rand(num_dim_distb) # w = torch.rand(1)?
     si = C.repeat(bs, 1, 1) + D.repeat(bs, 1, 1).matmul(K)
 
-    dot_x = f + B.matmul(u) + Bw.matmul(w) #added
+    dot_x = f + B.matmul(u) #+ Bw.matmul(w) #added
     dot_M = weighted_gradients(M, dot_x, x, detach=detach) # DMDt
     dot_W = weighted_gradients(W, dot_x, x, detach=detach) # DWDt
     if detach:
         #Contraction = dot_M + (A + B.matmul(K)).transpose(1,2).matmul(M.detach()) + M.detach().matmul(A + B.matmul(K)) + 2 * _lambda * M.detach()
-        Contraction = dot_M + (A + B.matmul(K)).transpose(1,2).matmul(M.detach()) + M.detach().matmul(A + B.matmul(K)) + _lambda * M.detach()
-        Cond1 = torch.cat((torch.cat((Contraction, M.detach().matmul(Bw)), 2), torch.cat((Bw.transpose(1, 2).matmul(M.detach()),
-                                                                                          -1 * mu(torch.ones(1)) * torch.ones((bs, num_dim_distb, num_dim_distb))), 2)), 1)
-        # Cond2 = torch.cat((torch.cat((_lambda * M.detach(), torch.zeros(bs, num_dim_x, num_dim_distb)), 2),
-        #                    torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x), (alpha(torch.ones(1)) - mu) *
-        #                               torch.ones((bs, num_dim_distb, num_dim_distb))), 2)), 1) - \
-        #         (1 / alpha(torch.ones(1))) * (torch.cat((si.transpose(1, 2), torch.zeros((bs, num_dim_distb, si.shape[1]))), 1)).matmul(torch.cat((si, torch.zeros((bs, si.shape[1], num_dim_distb))), 2))
-        Cond2 = torch.cat((torch.cat((_lambda * M.detach(), torch.zeros(bs, num_dim_x, num_dim_distb),si.transpose(1,2)), 2),
-                               torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),
-                   (alpha(torch.ones(1)) - mu(torch.ones(1))) * torch.ones((bs, num_dim_distb, num_dim_distb)),
-                   torch.zeros(bs, si.shape[1], num_dim_distb).transpose(1, 2)), 2),
-                               torch.cat((si, torch.zeros(bs, si.shape[1], num_dim_distb),
-                   alpha(torch.ones(1)) * torch.eye(C.shape[0]).repeat(bs,1,1)), 2)),1)
+        Contraction = dot_M + (A + B.matmul(K)).transpose(1,2).matmul(M.detach()) + M.detach().matmul(A + B.matmul(K)) + _lambda * M.detach() #n x n
+
+        #Cond1 (n+p) x (n+p)
+        Cond1 = torch.cat((torch.cat((Contraction, M.detach().matmul(Bw)), 2), torch.cat((Bw.transpose(1, 2).matmul(M.detach()),-1 * mu(torch.ones(1)) * torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1)
+        Cond2 = torch.cat((torch.cat((_lambda * M.detach(), torch.zeros(bs, num_dim_x, num_dim_distb)), 2),torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x), (alpha(torch.ones(1)) - mu(torch.ones(1))) *torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1) - (1 / alpha(torch.ones(1))) * (torch.cat((si.transpose(1, 2), torch.zeros((bs, num_dim_distb, si.shape[1]))), 1)).matmul(torch.cat((si, torch.zeros((bs, si.shape[1], num_dim_distb))), 2))
+
+        # Cond2 = torch.cat((torch.cat((_lambda * M.detach(), torch.zeros(bs, num_dim_x, num_dim_distb),si.transpose(1,2)), 2),
+        #                        torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),
+        #            (alpha(torch.ones(1)) - mu(torch.ones(1))) * torch.eye(num_dim_distb).repeat(bs,1,1),
+        #            torch.zeros(bs, si.shape[1], num_dim_distb).transpose(1, 2)), 2),
+        #                        torch.cat((si, torch.zeros(bs, si.shape[1], num_dim_distb),
+        #            alpha(torch.ones(1)) * torch.eye(C.shape[0]).repeat(bs,1,1)), 2)),1)
     else:
         Contraction = dot_M + (A + B.matmul(K)).transpose(1,2).matmul(M) + M.matmul(A + B.matmul(K)) + _lambda * M
         #Contraction = dot_M + (A + B.matmul(K)).transpose(1, 2).matmul(M.detach()) + M.detach().matmul(A + B.matmul(K)) + 2 * _lambda * M.detach()
-        Cond1 = torch.cat((torch.cat((Contraction, M.matmul(Bw)), 2), torch.cat(
-            (Bw.transpose(1, 2).matmul(M), -1 * mu(torch.ones(1)) * torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1)
+        Cond1 = torch.cat((torch.cat((Contraction, M.matmul(Bw)), 2), torch.cat((Bw.transpose(1, 2).matmul(M), -1 * mu(torch.ones(1)) * torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1)
 
-        # Cond2 = torch.cat((torch.cat((_lambda * M, torch.zeros(bs, num_dim_x, num_dim_distb)), 2), torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),
-        #                                                                                                       (alpha(torch.ones(1)) - mu(torch.ones(1))) *
-        #                               torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1) - (1 / alpha(torch.ones(1))) * (
-        #             torch.cat((si.transpose(1, 2), torch.zeros((bs, num_dim_distb, si.shape[1]))), 1)).matmul(
-        #     torch.cat((si, torch.zeros((bs, si.shape[1], num_dim_distb))), 2))
+        Cond2 = torch.cat((torch.cat((_lambda * M, torch.zeros(bs, num_dim_x, num_dim_distb)), 2), torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),(alpha(torch.ones(1)) - mu(torch.ones(1))) * torch.eye(num_dim_distb).repeat(bs,1,1)), 2)), 1) - (1 / alpha(torch.ones(1))) * (torch.cat((si.transpose(1, 2), torch.zeros((bs, num_dim_distb, si.shape[1]))), 1)).matmul(torch.cat((si, torch.zeros((bs, si.shape[1], num_dim_distb))), 2))
 
-        Cond2 = torch.cat((torch.cat((_lambda * M, torch.zeros(bs, num_dim_x, num_dim_distb),si.transpose(1,2)), 2),
-                               torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),
-                   (alpha(torch.ones(1)) - mu(torch.ones(1))) * torch.ones((bs, num_dim_distb, num_dim_distb)),
-                   torch.zeros(bs, si.shape[1], num_dim_distb).transpose(1, 2)), 2),
-                               torch.cat((si, torch.zeros(bs, si.shape[1], num_dim_distb),
-                   alpha(torch.ones(1)) * torch.eye(C.shape[0]).repeat(bs,1,1)), 2)),1)
-
-    # loss = 0
-    # loss += loss_pos_matrix_random_sampling(- Cond1 - epsilon * torch.eye(Cond1.shape[-1]).unsqueeze(0).type(x.type()))
-    # loss += loss_pos_matrix_random_sampling(Cond2 - epsilon * torch.eye(Cond2.shape[-1]).unsqueeze(0).type(x.type()))
+        # Cond2 = torch.cat((torch.cat((_lambda * M, torch.zeros(bs, num_dim_x, num_dim_distb),si.transpose(1,2)), 2),
+        #                        torch.cat((torch.zeros(bs, num_dim_distb, num_dim_x),
+        #            (alpha(torch.ones(1)) - mu(torch.ones(1))) * torch.eye(num_dim_distb).repeat(bs,1,1),
+        #            torch.zeros(bs, si.shape[1], num_dim_distb).transpose(1, 2)), 2),
+        #                        torch.cat((si, torch.zeros(bs, si.shape[1], num_dim_distb),
+        #            alpha(torch.ones(1)) * torch.eye(C.shape[0]).repeat(bs,1,1)), 2)),1)
 
     # #added
 
-    # #C1
-    # C1_inner = - weighted_gradients(W, f, x) + DfDx.matmul(W) + W.matmul(DfDx.transpose(1,2)) + 2 * _lambda * W
-    # C1_LHS_1 = _Bbot.transpose(1,2).matmul(C1_inner).matmul(_Bbot) # this has to be a negative definite matrix
-    #
-    # # C2
-    # C2_inners = []
-    # C2s = []
-    # for j in range(num_dim_control):
-    #     C2_inner = weighted_gradients(W, B[:,:,j].unsqueeze(-1), x) - (DBDx[:,:,:,j].matmul(W) + W.matmul(DBDx[:,:,:,j].transpose(1,2)))
-    #     C2 = _Bbot.transpose(1,2).matmul(C2_inner).matmul(_Bbot)
-    #     C2_inners.append(C2_inner)
-    #     C2s.append(C2)
+     #C1
+    C1_inner = - weighted_gradients(W, f, x) + DfDx.matmul(W) + W.matmul(DfDx.transpose(1,2)) + 2 * _lambda * W
+    C1_LHS_1 = _Bbot.transpose(1,2).matmul(C1_inner).matmul(_Bbot) # this has to be a negative definite matrix
+
+    # C2
+    C2_inners = []
+    C2s = []
+    for j in range(num_dim_control):
+        C2_inner = weighted_gradients(W, B[:,:,j].unsqueeze(-1), x) - (DBDx[:,:,:,j].matmul(W) + W.matmul(DBDx[:,:,:,j].transpose(1,2)))
+        C2 = _Bbot.transpose(1,2).matmul(C2_inner).matmul(_Bbot)
+        C2_inners.append(C2_inner)
+        C2s.append(C2)
 
     loss = 0
-    loss += loss_pos_matrix_random_sampling(- Cond1 - epsilon * torch.eye(Cond1.shape[-1]).unsqueeze(0).type(x.type())) #loss_pos_matrix_random_sampling
-    loss += loss_pos_matrix_random_sampling(Cond2) #- epsilon * torch.eye(Cond2.shape[-1]).unsqueeze(0).type(x.type())
+    #loss += loss_pos_matrix_random_sampling(-Contraction - epsilon * torch.eye(Contraction.shape[-1]).unsqueeze(0).type(x.type()))
+    loss += loss_pos_matrix_random_sampling(- Cond1  - epsilon * torch.eye(Cond1.shape[-1]).unsqueeze(0).type(x.type())) #loss_pos_matrix_eigen_values
+    loss += loss_pos_matrix_random_sampling(Cond2)
     loss += alpha(torch.ones(1))
+    #loss += mu(torch.ones(1))
     loss += loss_pos_matrix_random_sampling(W - args.w_lb * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()))
 
-    # loss += loss_pos_matrix_random_sampling(-Contraction - epsilon * torch.eye(Contraction.shape[-1]).unsqueeze(0).type(x.type()))
-    # loss += loss_pos_matrix_random_sampling(-C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
-    # loss += loss_pos_matrix_random_sampling(args.w_ub * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()) - W)
-    # loss += 1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
+    loss += loss_pos_matrix_random_sampling(-C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
+    #loss += loss_pos_matrix_random_sampling(args.w_ub * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()) - W)
+    loss += 1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
 
     if verbose: # was torch.symeig(Contraction)[0].min(dim=1)[0].mean()
         print(torch.linalg.eigh(Contraction,UPLO = 'U')[0].min(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].max(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].mean()) #torch.linalg.eigvalsh
     if acc:
-        return loss, ((torch.linalg.eigh(Contraction,UPLO = 'U')[0]>= 0).sum(dim=1) == 0).cpu().detach().numpy(), (
-                    (torch.linalg.eigh(Cond1,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy(), ((torch.linalg.eigh(Cond2,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+        return loss, loss_pos_matrix_random_sampling(-Contraction).item(),loss_pos_matrix_random_sampling(-Cond1).item(),loss_pos_matrix_random_sampling(Cond2).item()#,loss_pos_matrix_random_sampling(-C1_LHS_1).item() #,1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
+        #return loss, loss_pos_matrix_eigen_values(Contraction).item(), loss_pos_matrix_eigen_values(Cond1).item(), loss_pos_matrix_eigen_values(-Cond2).item()
+        #return loss, ((torch.linalg.eigh(Contraction,UPLO = 'U')[0]>= 0).sum(dim=1) == 0).cpu().detach().numpy(), (
+                     #(torch.linalg.eigh(Cond1,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy(), ((torch.linalg.eigh(-Cond2,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy()
         #return loss, ((torch.symeig(Contraction)[0]>=0).sum(dim=1)==0).cpu().detach().numpy(), ((torch.symeig(C1_LHS_1)[0]>=0).sum(dim=1)==0).cpu().detach().numpy(), sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s]).item()
     else:
-        return loss, None, None, None
+        return loss, None, None, None #, None #, None
 
-optimizer = torch.optim.Adam(list(model_W.parameters()) + list(model_Wbot.parameters()) + list(model_u_w1.parameters()) + list(model_u_w2.parameters())  + list(alpha.parameters()) + list(mu.parameters()), lr=args.learning_rate) #
-
+optimizer = torch.optim.Adam(list(model_W.parameters()) + list(model_Wbot.parameters()) + list(model_u_w1.parameters()) + list(model_u_w2.parameters())  +  list(alpha.parameters()) + list(mu.parameters()), lr=args.learning_rate)
+#optimizer = torch.optim.Adam([{'params':list(model_W.parameters())+ list(model_Wbot.parameters()) + list(model_u_w1.parameters()) + list(model_u_w2.parameters())},{'params':list(alpha.parameters()) + list(mu.parameters()),'lr': 1e-3}],lr=args.learning_rate)
 def trainval(X, bs=args.bs, train=True, _lambda=args._lambda, acc=False, detach=False): # trainval a set of x
-    # torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
 
     if train:
         indices = np.random.permutation(len(X))
@@ -316,6 +308,8 @@ def trainval(X, bs=args.bs, train=True, _lambda=args._lambda, acc=False, detach=
     total_p1 = 0
     total_p2 = 0
     total_l3 = 0
+    total_c1 = 0
+    total_c2 = 0
 
     if train:
         _iter = tqdm(range(len(X) // bs))
@@ -350,10 +344,12 @@ def trainval(X, bs=args.bs, train=True, _lambda=args._lambda, acc=False, detach=
 
         total_loss += loss.item() * x.shape[0]
         if acc:
-            total_p1 += p1.sum()
-            total_p2 += p2.sum()
-            total_l3 += l3.sum() #l3 * x.shape[0]
-    return total_loss / len(X), total_p1 / len(X), total_p2 / len(X), total_l3/ len(X)
+            total_p1 += p1 * x.shape[0] #p1.sum()
+            total_p2 += p2 * x.shape[0]   #p2.sum()
+            total_l3 += l3 * x.shape[0]  #l3 * x.shape[0]
+            #total_c1 += c1 * x.shape[0]
+            #total_c2 += c2 * x.shape[0]
+    return total_loss / len(X), total_p1 / len(X), total_p2 / len(X), total_l3/ len(X) #, total_c1/ len(X), total_c2/ len(X)
 
 best_acc = 0
 
@@ -365,31 +361,36 @@ def adjust_learning_rate(optimizer, epoch):
 
 for epoch in range(args.epochs):
     #adjust_learning_rate(optimizer, epoch)
-    loss, _, _, _ = trainval(X_tr, train=True, _lambda=args._lambda, acc=False, detach=False) #True if epoch < args.lr_step else False
+    loss, _, _, _ = trainval(X_tr, train=True, _lambda=args._lambda, acc=False, detach=True if epoch < args.lr_step else False) #True if epoch < args.lr_step else False
+    alpha_grad.append(alpha.weight.grad.item())
+    mu_grad.append(mu.weight.grad.item())
     print("Training loss: ", loss)
+    print("Gradient alpha/mu:", mu.weight.grad.item(), alpha.weight.grad.item())
     print("Learning Rate:",optimizer.param_groups[0]['lr'])
     print("Alpha/Mu:", alpha.weight.item(), mu.weight.item())
     train_loss.append(loss)
     loss, p1, p2, l3 = trainval(X_te, train=False, _lambda=0., acc=True, detach=False)
     test_loss.append(loss)
     print("Epoch %d: Testing loss/Contraction/Cond1/Cond2: "%epoch, loss, p1, p2, l3)
-    #print("Epoch %d: Alpha:" %epoch, alpha.weight.item())
-    #print("Epoch %d: r$\mu$:" %epoch, mu.weight.item()) #mu.weight.item()
+    print("Epoch %d: Alpha:" %epoch, alpha.weight.item())
+    print("Epoch %d: r$\mu$:" %epoch, mu.weight.item()) #mu.weight.item()
     Alpha.append(alpha.weight.item())
     Mu.append(mu.weight.item())
     Cont.append(p1)
     Condition1.append(p2)
+    Condition2.append(l3)
 
-    if p1+p2 >= best_acc:
-        best_acc = p1 + p2
+
+    if l3+p2 >= best_acc:
+        best_acc = l3 + p2
         filename = args.log+'/model_best.pth.tar'
         filename_controller = args.log+'/controller_best.pth.tar'
-        torch.save({'args':args, 'precs':(loss, p1, p2), 'model_W': model_W.state_dict(), 'model_Wbot': model_Wbot.state_dict(), 'model_u_w1': model_u_w1.state_dict(), 'model_u_w2': model_u_w2.state_dict()}, filename)
+        torch.save({'args':args, 'precs':(loss, p1, p2, l3), 'model_W': model_W.state_dict(), 'model_Wbot': model_Wbot.state_dict(), 'model_u_w1': model_u_w1.state_dict(), 'model_u_w2': model_u_w2.state_dict(), 'alpha': alpha.state_dict(),'mu': mu.state_dict()}, filename)
         torch.save(u_func, filename_controller)
 
     if epoch == args.epochs-1 :
         with open(args.task + '.pkl', 'wb') as f:
-            pickle.dump([train_loss, test_loss, Alpha,Mu,Cont,Condition1], f)
+            pickle.dump([train_loss, test_loss, Alpha,Mu,Cont,Condition1, Condition2,alpha_grad,mu_grad], f)
 
 
 
