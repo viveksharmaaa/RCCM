@@ -92,8 +92,8 @@ system = importlib.import_module('system_'+args.task)
 f_func = system.f_func
 B_func = system.B_func
 Bw_func = system.Bw_func
+C,D= system.DgDxu()
 #g_func =  system.g_func
-C,D = system.DgDxu()
 num_dim_x = system.num_dim_x
 num_dim_control = system.num_dim_control
 num_dim_distb = system.num_dim_distb
@@ -223,9 +223,10 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
     w = torch.rand(bs,num_dim_distb).unsqueeze(-1) #added for dot_x for computing dot_M
 
     A = DfDx + sum([u[:, i, 0].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i] for i in range(num_dim_control)]) + sum([torch.rand(1) * DBwDx[:, :, :, i] for i in range(num_dim_distb)]) # DBwDx * torch.rand(num_dim_distb) # w = torch.rand(1)?
+
     si = C.repeat(bs, 1, 1) + D.repeat(bs, 1, 1).matmul(K)
 
-    dot_x = f + B.matmul(u) #+ Bw.matmul(w) #added
+    dot_x = f + B.matmul(u) + Bw.matmul(w) #added
     dot_M = weighted_gradients(M, dot_x, x, detach=detach) # DMDt
     dot_W = weighted_gradients(W, dot_x, x, detach=detach) # DWDt
     if detach:
@@ -258,16 +259,17 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
 
     # #added
 
-     #C1
-    C1_inner = - weighted_gradients(W, f, x) + DfDx.matmul(W) + W.matmul(DfDx.transpose(1,2)) + 2 * _lambda * W
-    C1_LHS_1 = _Bbot.transpose(1,2).matmul(C1_inner).matmul(_Bbot) # this has to be a negative definite matrix
+    # C1
+    C1_inner = - weighted_gradients(W, f, x) + DfDx.matmul(W) + W.matmul(DfDx.transpose(1, 2)) + 2 * _lambda * W
+    C1_LHS_1 = _Bbot.transpose(1, 2).matmul(C1_inner).matmul(_Bbot)  # this has to be a negative definite matrix
 
     # C2
     C2_inners = []
     C2s = []
     for j in range(num_dim_control):
-        C2_inner = weighted_gradients(W, B[:,:,j].unsqueeze(-1), x) - (DBDx[:,:,:,j].matmul(W) + W.matmul(DBDx[:,:,:,j].transpose(1,2)))
-        C2 = _Bbot.transpose(1,2).matmul(C2_inner).matmul(_Bbot)
+        C2_inner = weighted_gradients(W, B[:, :, j].unsqueeze(-1), x) - (
+                DBDx[:, :, :, j].matmul(W) + W.matmul(DBDx[:, :, :, j].transpose(1, 2)))
+        C2 = _Bbot.transpose(1, 2).matmul(C2_inner).matmul(_Bbot)
         C2_inners.append(C2_inner)
         C2s.append(C2)
 
@@ -278,10 +280,10 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
     loss += alpha(torch.ones(1))
     #loss += mu(torch.ones(1))
     loss += loss_pos_matrix_random_sampling(W - args.w_lb * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()))
-
-    loss += loss_pos_matrix_random_sampling(-C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
-    #loss += loss_pos_matrix_random_sampling(args.w_ub * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()) - W)
-    loss += 1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
+    loss += loss_pos_matrix_random_sampling(
+        -C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
+    # loss += loss_pos_matrix_random_sampling(args.w_ub * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()) - W)
+    loss += 1. * sum([1. * (C2 ** 2).reshape(bs, -1).sum(dim=1).mean() for C2 in C2s])
 
     if verbose: # was torch.symeig(Contraction)[0].min(dim=1)[0].mean()
         print(torch.linalg.eigh(Contraction,UPLO = 'U')[0].min(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].max(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].mean()) #torch.linalg.eigvalsh
@@ -295,6 +297,8 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
         return loss, None, None, None #, None #, None
 
 optimizer = torch.optim.Adam(list(model_W.parameters()) + list(model_Wbot.parameters()) + list(model_u_w1.parameters()) + list(model_u_w2.parameters())  +  list(alpha.parameters()) + list(mu.parameters()), lr=args.learning_rate)
+
+#optimizer_ref = torch.optim.Adam(list(alpha.parameters()) + list(mu.parameters()), lr=args.learning_rate)
 #optimizer = torch.optim.Adam([{'params':list(model_W.parameters())+ list(model_Wbot.parameters()) + list(model_u_w1.parameters()) + list(model_u_w2.parameters())},{'params':list(alpha.parameters()) + list(mu.parameters()),'lr': 1e-3}],lr=args.learning_rate)
 def trainval(X, bs=args.bs, train=True, _lambda=args._lambda, acc=False, detach=False): # trainval a set of x
     #torch.autograd.set_detect_anomaly(True)
@@ -372,8 +376,6 @@ for epoch in range(args.epochs):
     loss, p1, p2, l3 = trainval(X_te, train=False, _lambda=0., acc=True, detach=False)
     test_loss.append(loss)
     print("Epoch %d: Testing loss/Contraction/Cond1/Cond2: "%epoch, loss, p1, p2, l3)
-    print("Epoch %d: Alpha:" %epoch, alpha.weight.item())
-    print("Epoch %d: r$\mu$:" %epoch, mu.weight.item()) #mu.weight.item()
     Alpha.append(alpha.weight.item())
     Mu.append(mu.weight.item())
     Cont.append(p1)
@@ -391,6 +393,58 @@ for epoch in range(args.epochs):
     if epoch == args.epochs-1 :
         with open(args.task + '.pkl', 'wb') as f:
             pickle.dump([train_loss, test_loss, Alpha,Mu,Cont,Condition1, Condition2,alpha_grad,mu_grad], f)
+
+
+# for OPT_REF (offline optimization for refining state and input tubes)
+#
+# alpha.weight = torch.nn.Parameter(torch.tensor([10.0]))
+# mu.weight = torch.nn.Parameter(torch.tensor([10.0]))
+#
+# alpha_grad_ref = []
+# mu_grad_ref = []
+# train_loss_ref = []
+# test_loss_ref = []
+# Cont_ref = []
+# Condition1_ref = []
+# Condition2_ref = []
+# Alpha_ref = []
+# Mu_ref = []
+#
+# for epoch in range(args.epochs):
+#     loss, _, _, _ = trainval(X_tr, train=True, _lambda=args._lambda, acc=False,detach=True,refine=True)
+#     alpha_grad_ref.append(alpha.weight.grad.item())
+#     mu_grad_ref.append(mu.weight.grad.item())
+#     print("Training Ref loss: ", loss)
+#     print("Gradient Ref alpha/mu:", mu.weight.grad.item(), alpha.weight.grad.item())
+#     print("Learning Ref Rate:",optimizer_ref.param_groups[0]['lr'])
+#     print("Alpha-Ref/Mu-Ref:", alpha.weight.item(), mu.weight.item())
+#     train_loss_ref.append(loss)
+#     loss, p1, p2, l3 = trainval(X_te, train=False, _lambda=0., acc=True, detach=False,refine=True)
+#     test_loss_ref.append(loss)
+#     print("Epoch %d: Ref Testing loss/Contraction/Cond1/Cond2: "%epoch, loss, p1, p2, l3)
+#     Alpha_ref.append(alpha.weight.item())
+#     Mu_ref.append(mu.weight.item())
+#     Cont_ref.append(p1)
+#     Condition1_ref.append(p2)
+#     Condition2_ref.append(l3)
+#
+#     if l3+p2 >= best_acc:
+#         best_acc = l3 + p2
+#         filename_ref = args.log+'/model_best_ref.pth.tar'
+#         filename_controller_ref = args.log+'/controller_best_ref.pth.tar'
+#         torch.save({'args':args, 'precs':(loss, p1, p2, l3), 'model_W': model_W.state_dict(), 'model_Wbot': model_Wbot.state_dict(), 'model_u_w1': model_u_w1.state_dict(), 'model_u_w2': model_u_w2.state_dict(), 'alpha_ref': alpha.state_dict(),'mu_ref': mu.state_dict()}, filename_ref)
+#         torch.save(u_func, filename_controller_ref)
+#
+#     if epoch == args.epochs-1 :
+#         with open(args.task + '_refined.pkl', 'wb') as f:
+#             pickle.dump([train_loss_ref, test_loss_ref, Alpha_ref,Mu_ref,Cont_ref,Condition1_ref, Condition2_ref,alpha_grad_ref,mu_grad_ref], f)
+
+
+
+
+
+
+
 
 
 
