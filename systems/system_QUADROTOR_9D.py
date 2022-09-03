@@ -65,17 +65,21 @@ def DgDxu():
     C = torch.cat((torch.eye(num_dim_x),torch.zeros(num_dim_control,num_dim_x)))
     D = torch.cat((torch.zeros(num_dim_x,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
 
+    # All States only and no inputs
+    #C = torch.eye(num_dim_x)
+    #D = torch.zeros(num_dim_x,num_dim_control)
+
     # Only position states and inputs
     # C = torch.cat((torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1),torch.zeros(num_dim_control,num_dim_x)))
     # D = torch.cat((torch.zeros(3,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
 
     # Only position states
-    # C = torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1)
-    # D = torch.zeros(3,num_dim_control)
+    C_ref = torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1)
+    D_ref = torch.zeros(3,num_dim_control)
 
     # Refined States
-    C_ref = torch.cat((torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1),torch.zeros(num_dim_control,num_dim_x)))
-    D_ref = torch.cat((torch.zeros(3,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
+    #C_ref = torch.cat((torch.cat((torch.eye(3),torch.zeros(3,num_dim_x-3)),1),torch.zeros(num_dim_control,num_dim_x)))
+    #D_ref = torch.cat((torch.zeros(3,num_dim_control),0.01 * torch.diag(torch.tensor([2.0,5.0,5.0]))))
 
     return C,D,C_ref,D_ref
 

@@ -16,19 +16,19 @@ sys.path.append('models')
 import argparse
 
 #added
-import argparse as args
-args.task = 'QUADROTOR_9D' #
-args.use_cuda = 'False'
-args.bs = 1024
-args.num_train = 131072
-args.num_test = 32768
-args.learning_rate = 0.001
-args.epochs = 15
-args.lr_step = 5
-args._lambda = 0.5
-args.w_ub = 10
-args.w_lb = 0.1
-args.use_cuda = 'False'
+# import argparse as args
+# args.task = 'QUADROTOR_9D' #
+# args.use_cuda = 'False'
+# args.bs = 1024
+# args.num_train = 131072
+# args.num_test = 32768
+# args.learning_rate = 0.001
+# args.epochs = 15
+# args.lr_step = 5
+# args._lambda = 0.5
+# args.w_ub = 10
+# args.w_lb = 0.1
+# args.use_cuda = 'False'
 train_loss = []
 test_loss = []
 Alpha = []
@@ -92,7 +92,7 @@ system = importlib.import_module('system_'+args.task)
 f_func = system.f_func
 B_func = system.B_func
 Bw_func = system.Bw_func
-C,D= system.DgDxu()
+C,D,C_ref,D_ref= system.DgDxu()
 #g_func =  system.g_func
 num_dim_x = system.num_dim_x
 num_dim_control = system.num_dim_control
@@ -279,17 +279,16 @@ def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False):
     loss += loss_pos_matrix_random_sampling(Cond2)
     loss += alpha(torch.ones(1))
     #loss += mu(torch.ones(1))
-    loss += loss_pos_matrix_random_sampling(W - args.w_lb * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()))
-    loss += loss_pos_matrix_random_sampling(
-        -C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
+    #loss += loss_pos_matrix_random_sampling(W - args.w_lb * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()))
+    loss += loss_pos_matrix_random_sampling(-C1_LHS_1 - epsilon * torch.eye(C1_LHS_1.shape[-1]).unsqueeze(0).type(x.type()))
     # loss += loss_pos_matrix_random_sampling(args.w_ub * torch.eye(W.shape[-1]).unsqueeze(0).type(x.type()) - W)
     loss += 1. * sum([1. * (C2 ** 2).reshape(bs, -1).sum(dim=1).mean() for C2 in C2s])
 
     if verbose: # was torch.symeig(Contraction)[0].min(dim=1)[0].mean()
         print(torch.linalg.eigh(Contraction,UPLO = 'U')[0].min(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].max(dim=1)[0].mean(), torch.linalg.eigh(Contraction,UPLO = 'U')[0].mean()) #torch.linalg.eigvalsh
     if acc:
-        return loss, loss_pos_matrix_random_sampling(-Contraction).item(),loss_pos_matrix_random_sampling(-Cond1).item(),loss_pos_matrix_random_sampling(Cond2).item()#,loss_pos_matrix_random_sampling(-C1_LHS_1).item() #,1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
-        #return loss, loss_pos_matrix_eigen_values(Contraction).item(), loss_pos_matrix_eigen_values(Cond1).item(), loss_pos_matrix_eigen_values(-Cond2).item()
+        #return loss, loss_pos_matrix_random_sampling(-Contraction).item(),loss_pos_matrix_random_sampling(-Cond1).item(),loss_pos_matrix_random_sampling(Cond2).item()#,loss_pos_matrix_random_sampling(-C1_LHS_1).item() #,1. * sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s])
+        return loss, loss_pos_matrix_eigen_values(Contraction).item(), loss_pos_matrix_eigen_values(Cond1).item(), loss_pos_matrix_eigen_values(-Cond2).item()
         #return loss, ((torch.linalg.eigh(Contraction,UPLO = 'U')[0]>= 0).sum(dim=1) == 0).cpu().detach().numpy(), (
                      #(torch.linalg.eigh(Cond1,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy(), ((torch.linalg.eigh(-Cond2,UPLO = 'U')[0] >= 0).sum(dim=1) == 0).cpu().detach().numpy()
         #return loss, ((torch.symeig(Contraction)[0]>=0).sum(dim=1)==0).cpu().detach().numpy(), ((torch.symeig(C1_LHS_1)[0]>=0).sum(dim=1)==0).cpu().detach().numpy(), sum([1.*(C2**2).reshape(bs,-1).sum(dim=1).mean() for C2 in C2s]).item()
@@ -373,7 +372,7 @@ for epoch in range(args.epochs):
     print("Learning Rate:",optimizer.param_groups[0]['lr'])
     print("Alpha/Mu:", alpha.weight.item(), mu.weight.item())
     train_loss.append(loss)
-    loss, p1, p2, l3 = trainval(X_te, train=False, _lambda=0., acc=True, detach=False)
+    loss, p1, p2, l3 = trainval(X_te, train=False, _lambda=args._lambda, acc=True, detach=False) #args.lambda  was 0
     test_loss.append(loss)
     print("Epoch %d: Testing loss/Contraction/Cond1/Cond2: "%epoch, loss, p1, p2, l3)
     Alpha.append(alpha.weight.item())

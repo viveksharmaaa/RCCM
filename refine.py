@@ -1,14 +1,15 @@
 import torch
 import importlib
 import sys
-import argparse as args
+
 import numpy as np
 from torch.autograd import grad
 from tqdm import tqdm
 import time
 import pickle
+import argparse
 
-
+import argparse as args
 args.task = 'QUADROTOR_9D'
 args.use_cuda = 'False'
 args.bs = 1024
@@ -22,6 +23,26 @@ args.w_ub = 10
 args.w_lb = 0.1
 args.use_cuda = 'False'
 args.log = 'log_QUADROTOR_9D_refined'
+
+np.random.seed(1024)
+
+parser = argparse.ArgumentParser(description="")
+parser.add_argument('--task', type=str,
+                        default='CAR', help='Name of the model.')
+parser.add_argument('--no_cuda', dest='use_cuda', action='store_false', help='Disable cuda.')
+parser.set_defaults(use_cuda=False)
+parser.add_argument('--bs', type=int, default=1024, help='Batch size.')
+parser.add_argument('--num_train', type=int, default=131072, help='Number of samples for training.') # 4096 * 32
+parser.add_argument('--num_test', type=int, default=32768, help='Number of samples for testing.') # 1024 * 32
+parser.add_argument('--lr', dest='learning_rate', type=float, default=0.001, help='Base learning rate.')
+parser.add_argument('--epochs', type=int, default=15, help='Number of training epochs.')
+parser.add_argument('--lr_step', type=int, default=5, help='')
+parser.add_argument('--lambda', type=float, dest='_lambda', default=0.5, help='Convergence rate: lambda')
+parser.add_argument('--w_ub', type=float, default=10, help='Upper bound of the eigenvalue of the dual metric.')
+parser.add_argument('--w_lb', type=float, default=0.1, help='Lower bound of the eigenvalue of the dual metric.')
+parser.add_argument('--log', type=str, help='Path to a directory for storing the log.')
+
+args = parser.parse_args()
 
 sys.path.append('systems')
 sys.path.append('configs')
@@ -182,32 +203,6 @@ def nograd():
     for param in model_u_w2.parameters():
         param.requires_grad = False
 
-
-
-# def fetch(x,xe,uref):
-#     model_W, model_Wbot, model_u_w1, model_u_w2, W_func, u_func = get_model(num_dim_x, num_dim_control, w_lb=args.w_lb,use_cuda=args.use_cuda)
-# with torch.no_grad():
-#     # metric
-#     model_W[0].weight.copy_(CCM['model_W']['0.weight'])
-#     model_W[0].bias.copy_(CCM['model_W']['0.bias'])
-#     model_W[2].weight.copy_(CCM['model_W']['2.weight'])
-#     model_Wbot[0].weight.copy_(CCM['model_Wbot']['0.weight'])
-#     model_Wbot[0].bias.copy_(CCM['model_Wbot']['0.bias'])
-#     model_Wbot[2].weight.copy_(CCM['model_Wbot']['2.weight'])
-#     # controller
-#     model_u_w1[0].weight.copy_(controller['model_u_w1']['0.weight'])
-#     model_u_w1[0].bias.copy_(controller['model_u_w1']['0.bias'])
-#     model_u_w1[2].weight.copy_(controller['model_u_w1']['2.weight'])
-#     model_u_w1[2].bias.copy_(controller['model_u_w1']['2.bias'])
-#     model_u_w2[0].weight.copy_(controller['model_u_w2']['0.weight'])
-#     model_u_w2[0].bias.copy_(controller['model_u_w2']['0.bias'])
-#     model_u_w2[2].weight.copy_(controller['model_u_w2']['2.weight'])
-#     model_u_w2[2].bias.copy_(controller['model_u_w2']['2.bias'])
-
-    # W = W_func(x)
-    # u = u_func(x, xe, uref)
-    # return W, u
-
 def forward(x, xref, uref, _lambda, verbose=False, acc=False, detach=False, refine=False):
     # x: bs x n x 1
     bs = x.shape[0]
@@ -350,7 +345,7 @@ for epoch in range(args.epochs):
         best_acc = l3 + p2
         filename_ref = args.log+'/model_best_ref.pth.tar'
         filename_controller_ref = args.log+'/controller_best_ref.pth.tar'
-        torch.save({'precs':(loss, p1, p2, l3), 'model_W': model_W.state_dict(), 'model_Wbot': model_Wbot.state_dict(), 'model_u_w1': model_u_w1.state_dict(), 'model_u_w2': model_u_w2.state_dict(), 'alpha_ref': alpha.state_dict(),'mu_ref': mu.state_dict()}, filename_ref)  #'args':args,
+        torch.save({'args':args,'precs':(loss, p1, p2, l3), 'model_W': model_W.state_dict(), 'model_Wbot': model_Wbot.state_dict(), 'model_u_w1': model_u_w1.state_dict(), 'model_u_w2': model_u_w2.state_dict(), 'alpha_ref': alpha.state_dict(),'mu_ref': mu.state_dict()}, filename_ref)  #'args':args,
         torch.save(u_func, filename_controller_ref)
 
     if epoch == args.epochs-1 :
