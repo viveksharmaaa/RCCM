@@ -16,17 +16,6 @@ sys.path.append('configs')
 sys.path.append('models')
 import argparse
 
-# import argparse as args
-# args.task = 'QUADROTOR_9D'
-# args.pretrained_RCCM = 'log_QUADROTOR_9D_refined_0818/controller_best_ref.pth.tar'
-# args.pretrained_CCM = 'log_QUADROTOR_9D_refined_0818/controller_best_ref.pth.tar'
-# args.sigma = 0
-# args.nTraj = 2
-# args.seed = 0
-# args.ref_traj_many = False
-# args.CCM = True
-# args.RCCM = False
-# args.init_same = False
 
 SMALL_SIZE = 8
 MEDIUM_SIZE = 10
@@ -57,25 +46,13 @@ parser.add_argument('--plot_dims', nargs='+', type=int, default=[0,1])
 parser.add_argument('--nTraj', type=int, default=10)
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--sigma', type=float, default=0.)
-parser.add_argument('--xd0scaler',type=float, default=0.5)
-parser.add_argument('--x0scaler',type=float, default=0.5)
 parser.add_argument('--plot_comp', nargs='+', type=int, default=[0,1])
 parser.add_argument('--ref_traj_many', type=bool, default=False)
-# parser.add_argument('--CCM', type=bool, default=False)
-# parser.add_argument('--RCCM', type=bool, default=True)
 parser.add_argument('--init_same', type=bool, default=False)
 
 args = parser.parse_args()
 
 np.random.seed(args.seed)
-
-
-if args.pretrained_RCCM:
-    to = args.pretrained_RCCM.split('/')[0] + '/' + args.task
-    with open(to + '.pkl', 'rb') as f:
-        al = pickle.load(f)
-    alpha = al[2][-1]
-    mu = al[3][-1]
 
 
 system = importlib.import_module('system_'+args.task)
@@ -85,8 +62,9 @@ f, B, Bw, _, num_dim_x, num_dim_control = get_system_wrapper(system)
 if args.pretrained_CCM:
     controller_CCM = get_controller_wrapper(args.pretrained_CCM)
     CCM = torch.load('log_' + args.task + '_0801/model_best.pth.tar', map_location=torch.device('cpu'))
+    #CCM = torch.load('log_' + 'CCMvsRCCM/model_best.pth.tar', map_location=torch.device('cpu'))
     #CCM = torch.load(args.pretrained_CCM, map_location=torch.device('cpu'))
-    CCM_tube = np.sqrt(CCM['args'].w_lb / CCM['args'].w_ub) * 1 / CCM['args']._lambda
+    CCM_tube = np.sqrt(CCM['args'].w_lb / CCM['args'].w_ub) * args.sigma / CCM['args']._lambda
 
 if args.pretrained_RCCM:
     controller_RCCM = get_controller_wrapper(args.pretrained_RCCM)
@@ -100,13 +78,7 @@ if __name__ == '__main__':
     XE_INIT_MAX = config.XE_INIT_MAX
 
     if not args.ref_traj_many:
-        x_0, xstar_0, ustar = config.system_reset(np.random.rand())  # x_0, xstar_0
-        # #added
-        # #x_0 = args.x0scaler * (config.X_MIN.reshape(-1) + np.random.rand(len(config.X_MIN.reshape(-1))) * (config.X_MAX.reshape(-1) - config.X_MIN.reshape(-1)))
-        # #xstar_0 = args.xd0scaler * (config.X_MIN.reshape(-1) + np.random.rand(len(config.X_MIN.reshape(-1))) * (config.X_MAX.reshape(-1) - config.X_MIN.reshape(-1)))
-        # print(x_0)
-        # print(xstar_0)
-        # #added
+        x_0, xstar_0, ustar = config.system_reset(np.random.rand())
         ustar = [u.reshape(-1, 1) for u in ustar]
         xstar_0 = xstar_0.reshape(-1, 1)
         xstar, _ = EulerIntegrate(None, system, f, B, Bw, None, ustar, xstar_0, time_bound, time_step,with_tracking=False, CCM=True, RCCM=False)
@@ -131,20 +103,18 @@ if __name__ == '__main__':
 
     controls_ref = []
     xinits = []
-    x_star = [] #added
-    xstar0 = [] #added
+    x_star = []
+    xstar0 = []
     for _ in range(args.nTraj):
-        #added different xstar in the loop
         if args.ref_traj_many:
             x_0, xstar_0, ustar = config.system_reset(np.random.rand())
             ustar = [u.reshape(-1, 1) for u in ustar]
             xstar_0 = xstar_0.reshape(-1, 1)
             xstar, _ = EulerIntegrate(None, system, f, B, Bw, None, ustar, xstar_0, time_bound, time_step,with_tracking=False, CCM=True, RCCM=False)
 
-        #added different xstar in the loop
 
         xe_0 = XE_INIT_MIN + np.random.rand(len(XE_INIT_MIN)) * (XE_INIT_MAX - XE_INIT_MIN)
-        #xinit = args.x0scaler * (config.X_MIN + np.random.rand(len(config.X_MIN)).reshape(-1,1) * (config.X_MAX - config.X_MIN)) #xstar_0 + xe_0.reshape(-1,1)
+
         if args.init_same:
             xinit = 1.1 * xstar_0
         else:
@@ -171,7 +141,6 @@ if __name__ == '__main__':
         if args.pretrained_CCM:
             initial_dist_CCM = np.sqrt(((x_closed_CCM[n_traj][0] - x_star[n_traj][0]) ** 2).sum())
             errors_CCM.append([np.sqrt(((x - xs) ** 2).sum()) / initial_dist_CCM for x, xs in zip(x_closed_CCM[n_traj][:-1], x_star[n_traj][:-1])])
-        #errors.append([np.sqrt(((x - xs) ** 2).sum()) for x, xs in zip(x_closed[n_traj][:-1], x_star[n_traj][:-1])])  # xstar [:-1]
 
 
         if args.plot_type=='2D':
@@ -192,13 +161,14 @@ if __name__ == '__main__':
                     plt.plot(t, [x[plot_dim, 0] for x in x_closed_CCM[n_traj]][:-1], color=colors[i],label='closed-loop traj_CCM' if i==0 and n_traj ==0 else None)
         elif args.plot_type=='error':
             if args.pretrained_RCCM:
-                plt.plot(t, [np.log(np.sqrt(((x[0:]-xs[0:])**2).sum())) for x, xs in zip(x_closed_RCCM[n_traj][:-1],  x_star[n_traj][:-1])], 'g', label='RCCM' if n_traj==0 else None)
-                plt.plot(t, np.repeat(alpha, len(t)), 'm-.',
-                         label='RCCM Tube Size' if n_traj == 0 else None)  # ,marker='${}$'.format(alpha) if n_traj==0 else None , markersize=100
+                plt.plot(t, [np.sqrt(((x[0:]-xs[0:])**2).sum()) for x, xs in zip(x_closed_RCCM[n_traj][:-1],  x_star[n_traj][:-1])], 'g', label='RCCM' if n_traj==0 else None)
+                plt.yscale('log')
+                #plt.plot(t, np.repeat(alpha, len(t)), 'm-.', label='RCCM Tube Size' if n_traj == 0 else None)  # ,marker='${}$'.format(alpha) if n_traj==0 else None , markersize=100
                 #plt.plot(t, np.repeat(np.log(mu), len(t)), 'r-.',label='mu' if n_traj == 0 else None)
             if args.pretrained_CCM:
-                plt.plot(t, [np.log(np.sqrt(((x[0:]-xs[0:])**2).sum())) for x, xs in zip(x_closed_CCM[n_traj][:-1],  x_star[n_traj][:-1])], 'k', label='CCM' if n_traj==0 else None)
-                plt.plot(t, np.repeat(np.log(CCM_tube), len(t)), 'b--', label='CCM Tube Size' if n_traj == 0 else None)
+                plt.plot(t, [np.sqrt(((x[0:]-xs[0:])**2).sum()) for x, xs in zip(x_closed_CCM[n_traj][:-1],  x_star[n_traj][:-1])], 'k', label='CCM' if n_traj==0 else None)
+                plt.yscale('log')
+               # plt.plot(t, np.repeat(np.log(CCM_tube), len(t)), 'b--', label='CCM Tube Size' if n_traj == 0 else None)
 
 
         elif args.plot_type=='controller':
@@ -208,20 +178,14 @@ if __name__ == '__main__':
                 plt.plot(t, [np.sqrt(((u - us) ** 2).sum()) for u, us in zip(controls_CCM[n_traj], controls_ref[n_traj])],'k', label='CCM' if n_traj==0 else None)
         elif args.plot_type =='composition':
             if args.pretrained_RCCM:
-                plt.plot(t, [np.log(np.sqrt(((np.append(x[0:], u) - np.append(xs[0:],us)) ** 2).sum())) for u, us , x , xs in zip(controls_RCCM[n_traj], controls_ref[n_traj],x_closed_RCCM[n_traj][:-1],x_star[n_traj][:-1])], 'g', label='closed-loop traj_RCCM' if n_traj==0 else None)
-                plt.plot(t, np.repeat(alpha, len(t)), 'm-.',label='RCCM Tube Size' if n_traj == 0 else None)  # ,marker='${}$'.format(alpha) if n_traj==0 else None , markersize=100
+                plt.plot(t, [np.sqrt(((np.append(x[0:], u) - np.append(xs[0:],us)) ** 2).sum()) for u, us , x , xs in zip(controls_RCCM[n_traj], controls_ref[n_traj],x_closed_RCCM[n_traj][:-1],x_star[n_traj][:-1])], 'g', label='closed-loop traj_RCCM' if n_traj==0 else None)
+                plt.yscale('log')
+                #plt.plot(t, np.repeat(alpha, len(t)), 'm-.',label='RCCM Tube Size' if n_traj == 0 else None)  # ,marker='${}$'.format(alpha) if n_traj==0 else None , markersize=100
                 #plt.plot(t, np.repeat(mu, len(t)), 'r-.',label='mu' if n_traj == 0 else None)
             if args.pretrained_CCM:
-                plt.plot(t, [np.log(np.sqrt(((np.append(x[0:], u) - np.append(xs, us)) ** 2).sum())) for u, us, x, xs in zip(controls_CCM[n_traj], controls_ref[n_traj], x_closed_CCM[n_traj][:-1],x_star[n_traj][:-1])], 'k', label='closed-loop traj_CCM' if n_traj == 0 else None)
-                plt.plot(t, np.repeat(CCM_tube, len(t)), 'b--', label='CCM Tube Size' if n_traj == 0 else None)
-        elif args.plot_type == 'STD_DEV':
-            fig, ax = plt.subplots() #TO BE CHANGED
-            x = np.linspace(0, 2 * np.pi, 50)
-            y = np.sin(x) + np.random.randn(len(x)) * 0.03
-            yerr0 = y - (0.1 + np.random.randn(len(x)) * 0.03)
-            yerr1 = y + (0.1 + np.random.randn(len(x)) * 0.03)
-            ax.plot(x, y, color='C0')
-            plt.fill_between(x, yerr0, yerr1, color='C0', alpha=0.5)
+                plt.plot(t, [np.sqrt(((np.append(x[0:], u) - np.append(xs, us) ** 2).sum())) for u, us, x, xs in zip(controls_CCM[n_traj], controls_ref[n_traj], x_closed_CCM[n_traj][:-1],x_star[n_traj][:-1])], 'k', label='closed-loop traj_CCM' if n_traj == 0 else None)
+                plt.yscale('log')
+                #plt.plot(t, np.repeat(CCM_tube, len(t)), 'b--', label='CCM Tube Size' if n_traj == 0 else None)
 
 
         if args.plot_type == '2D':
@@ -261,4 +225,3 @@ if __name__ == '__main__':
     plt.subplots_adjust(left=left, bottom=bottom, right=right, top=top)
     plt.legend(frameon=True)
     plt.show()
-    #plt.savefig(args.task + '_' + args.plot_type)

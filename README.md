@@ -34,14 +34,31 @@ optional arguments:
   --w_ub W_UB                   Upper bound of the eigenvalue of the dual metric.
   --w_lb W_LB                   Lower bound of the eigenvalue of the dual metric.
   --log LOG                     Path to a directory for storing the log.
-  --ref_traj_many               Flag for generating many reference trajectories.
-  --init_same                   Flag for initial conditions to be same for re and closed loop traj.
 ```
 
 For example, run the following command to learn a controller for the 9-dimensional quadrotor model.
 ```
 mkdir log_QUADROTOR_9D
-python main.py --log log_QUADROTOR_9D --task QUADROTOR_9D --epochs 120 --lambda 1.5
+python main.py --log log_QUADROTOR_9D --task QUADROTOR_9D
+```
+
+The ```plot_o.py``` script can be used for plotting. Usage of this script is as follows
+```
+usage: plot_o.py [-h] [--pretrained_RCCM LOG] [--pretrained_CCM LOG] [--task TASK]
+               [--plot_type PLOT_TYPE] [--plot_dims PLOT_DIMS]
+               [--nTraj NO_TRAJ] [--ref_traj_many REF_MANY]
+               [--init_same INIT_COND] [--plot_comp PLOT_COMP]
+
+optional arguments:
+  -h, --help                       show this help message and exit
+  --pretrained_RCCM LOG            Path to a directory storing RCCM controller
+  --pretrained_CCM LOG             Path to a directory storing CCM controller (used only for plot comparisons)
+  --plot_type PLOT_TYPE            Type of plot.
+  --plot_dims PLOT_DIMS            Dimension of state space that needs to be plotted.
+  --nTraj NO_TRAJ                  Number of closed loop trajectories to be generated
+  --ref_traj_many REF_MANY         Flag for generating many reference trajectories.
+  --init_same INIT_COND            Flag for initial conditions to be same for ref and closed loop traj.
+  --plot_comp PLOT_COMP            Flag for compositional plots (states + controls)
 ```
 
 Run the following command to evaluate the learned controller and plot the results.
