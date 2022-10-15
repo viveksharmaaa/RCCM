@@ -73,6 +73,6 @@ CCM vs RCCM tracking performance comparison results:
 
 [//]: # (![Alt_text]&#40;/RCCM/figures/combine.png?raw=true&#41;)
 
-![alt text](https://github.com/viveksharmaaa/RCCM/tree/master/figures/combine.jpg?raw=true)
+[//]: # (![alt text]&#40;https://github.com/viveksharmaaa/RCCM/tree/master/figures/combine.jpg?raw=true&#41;)
 
-
+![alt text](https://github.com/viveksharmaaa/RCCM/blob/master/figures/combine.jpg?raw=true)
