@@ -67,3 +67,8 @@ python plot_o.py --pretrained_RCCM log_QUADROTOR_8D/controller_best.pth.tar --ta
 python plot_o.py --pretrained_RCCM log_QUADROTOR_8D/controller_best.pth.tar --task QUADROTOR_9D --plot_type error
 ```
 
+CCM vs RCCM tracking performance comparison results:
+
+![sigma=5](/home/vivek/PycharmProjects/RCCM/figures/combine.png?raw=true)
+
+
