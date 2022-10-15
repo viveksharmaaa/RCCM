@@ -69,6 +69,10 @@ python plot_o.py --pretrained_RCCM log_QUADROTOR_8D/controller_best.pth.tar --ta
 
 CCM vs RCCM tracking performance comparison results:
 
-![sigma=5](/home/vivek/PycharmProjects/RCCM/figures/combine.png?raw=true)
+[//]: # (![Alt_text]&#40;/home/vivek/PycharmProjects/RCCM/figures/combine.png?raw=true&#41;)
+
+[//]: # (![Alt_text]&#40;/RCCM/figures/combine.png?raw=true&#41;)
+
+![alt text](https://github.com/viveksharmaaa/RCCM/tree/master/figures/combine.jpg?raw=true)
 
 
